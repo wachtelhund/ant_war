@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Ant War – Click to Power On</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <style>
+    html, body {
+      margin:0;
+      height:100%;
+      background:#000;
+      overflow:hidden;
+      cursor: pointer;
+    }
+    #wrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      overflow: hidden;
+    }
+    canvas {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      image-rendering: pixelated;
+      opacity: 0;                   /* start off */
+      transition: opacity 0.1s ease-in;
+      z-index: 1;
+    }
+    #crt {
+      position: absolute;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      object-fit: cover;
+      pointer-events: none;
+      z-index: 2;
+      transition: mix-blend-mode 0.1s ease, opacity 0.1s ease-in;
+    }
+    /* When TV is on: fade in canvas and blend the CRT frame */
+    .on canvas {
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="wrapper">
+    <div id="hint">Click to Power On</div>
+    <canvas id="c"></canvas>
+    <!-- Start with CRT-off image -->
+    <img id="crt" src="crt-off.png" alt="CRT Off">
+  </div>
+
+  <script type="module">
+    import init, { AntWar } from "./pkg/ant_war.js";
+    const wasm = await init();
+    const memory = wasm.memory;
+
+    const wrapper = document.getElementById('wrapper');
+    const hint = document.getElementById('hint');
+    const crtImg = document.getElementById('crt');
+    const canvas = document.getElementById('c');
+    const ctx = canvas.getContext('2d', { alpha: false });
+    const ant = new AntWar(1,1);
+
+    function fit() {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      const dpr = window.devicePixelRatio || 1;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = w + 'px';
+      canvas.style.height = h + 'px';
+      ant.resize(canvas.width, canvas.height);
+    }
+    window.addEventListener('resize', fit, { passive:true });
+    fit();
+
+    let imageData = new ImageData(
+      new Uint8ClampedArray(memory.buffer, ant.pixels_ptr(), ant.width()*ant.height()*4),
+      ant.width(), ant.height()
+    );
+
+    function refreshView() {
+      if (imageData.width !== ant.width() || imageData.height !== ant.height()) {
+        const len = ant.width()*ant.height()*4;
+        imageData = new ImageData(
+          new Uint8ClampedArray(memory.buffer, ant.pixels_ptr(), len),
+          ant.width(), ant.height()
+        );
+      }
+    }
+
+    // FPS counter
+    let frames=0, fps=0, last=performance.now();
+    function updateFps(){
+      const now=performance.now();
+      frames++;
+      if(now-last>=1000){ fps=frames; frames=0; last=now; }
+    }
+
+    function frame(){
+      ant.render();
+      refreshView();
+      ctx.putImageData(imageData,0,0);
+      ctx.font='16px monospace';
+      ctx.fillStyle='lime';
+      ctx.fillText(`${fps} FPS`,10,20);
+      updateFps();
+      requestAnimationFrame(frame);
+    }
+
+    // === White noise ===
+    function createWhiteNoise(context) {
+      const bufferSize = 2 * context.sampleRate;
+      const buffer = context.createBuffer(2, bufferSize, context.sampleRate);
+      for (let ch = 0; ch < buffer.numberOfChannels; ch++) {
+        const data = buffer.getChannelData(ch);
+        for (let i = 0; i < bufferSize; i++) {
+          data[i] = Math.random() * 2 - 1;
+        }
+      }
+      const noise = context.createBufferSource();
+      noise.buffer = buffer;
+      noise.loop = true;
+      return noise;
+    }
+
+    const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+    const noise = createWhiteNoise(audioCtx);
+    const filter = audioCtx.createBiquadFilter();
+    filter.type = 'bandpass';
+    filter.frequency.value = 1000;
+    filter.Q.value = 1;
+    noise.connect(filter).connect(audioCtx.destination);
+
+    // === Power-on ===
+    function powerOn(){
+      wrapper.classList.add('on');
+      hint.remove();
+
+      // Switch to CRT-on image
+      crtImg.src = 'crt.png';
+
+      // Fade in canvas and start animation
+      requestAnimationFrame(frame);
+
+      // Start audio
+      if(audioCtx.state === 'suspended') audioCtx.resume();
+      noise.start(0);
+
+      window.removeEventListener('click', powerOn);
+    }
+    window.addEventListener('click', powerOn);
+  </script>
+</body>
+</html>
