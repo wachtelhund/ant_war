@@ -52,7 +52,7 @@
   </div>
 
   <script type="module">
-    import init, { AntWar } from "./pkg/ant_war.js";
+  import init, { AntWar } from "/ant_war/pkg/ant_war.js";
     const wasm = await init();
     const memory = wasm.memory;
 
@@ -140,7 +140,7 @@
       hint.remove();
 
       // Switch to CRT-on image
-      crtImg.src = 'crt.png';
+  crtImg.src = '/ant_war/crt.png';
 
       // Fade in canvas and start animation
       requestAnimationFrame(frame);
